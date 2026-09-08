@@ -1,0 +1,15 @@
+# 编译产物，绝对不上传
+build/
+*.exe
+*.o
+*.out
+
+# VSCode临时缓存
+.vscode/*.log
+.vscode/.cache/
+.vscode/ipch/
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
+*.log
