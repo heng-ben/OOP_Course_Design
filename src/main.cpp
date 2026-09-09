@@ -179,6 +179,40 @@ void groupMenu(Platform_Zhb& p, int uid)
         else cout << "无效选项,请重新输入。\n";
     }
 }
+// ==================== 注册新用户 ====================
+int registerFlow(Platform_Zhb& p)
+{
+    cout << "\n----- 注册新用户 -----\n";
+    int id;
+    while (true)
+    {
+        cout << "请输入号码ID: ";
+        id = readInt();
+        if (p.findUser(id) != nullptr) { cout << "该ID已被占用,请换一个。\n"; continue; }
+        break;
+    }
+    string nick, birth, loc;
+    int tAge;
+    cout << "昵称: ";      getline(cin, nick);
+    cout << "出生时间(如 20000101): "; getline(cin, birth);
+    cout << "所在地(不含空格): ";      getline(cin, loc);
+    cout << "T龄(号码申请年限,整数): "; tAge = readInt();
+
+    User_Zhb u;
+    u.setId(id);
+    u.setNickname(nick);
+    u.setBirth(birth);
+    u.setLocation(loc);
+    u.setTAge(tAge);
+
+    if (p.registerUser(u))
+    {
+        cout << "注册成功!ID: " << id << " 昵称: " << nick << "\n";
+        return id;
+    }
+    cout << "注册失败。\n";
+    return -1;
+}
 
 // ==================== 开通服务流程 ====================
 void openServiceFlow(Platform_Zhb& p, int uid)
