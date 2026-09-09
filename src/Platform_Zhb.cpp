@@ -1,13 +1,13 @@
 #include "Platform_Zhb.h"
+#include "QQGroup_Zhb.h"      // loadData 里按模式 new 出具体子类
+#include "WeChatGroup_Zhb.h"
 
-#include <algorithm>   // std::find
 #include <fstream>
 #include <sstream>
+#include <iostream>
 
-// ================= 文件内部辅助函数（匿名命名空间） =================
 namespace
 {
-    // 去掉字符串首尾空白（用于「所在地」这类行尾字段）
     std::string trim(const std::string& s)
     {
         std::string t = s;
@@ -16,7 +16,6 @@ namespace
         return t;
     }
 
-    // 把 int 列表拼成 "a,b,c"，空列表返回空串
     std::string joinInts(const std::vector<int>& v)
     {
         std::string out;
@@ -30,51 +29,46 @@ namespace
 }
 
 // ---------------- 构造 / 析构 ----------------
-Platform_Zhb::Platform_Zhb()
-    : m_currentUserId(-1)   // -1 表示未登录
-{
-}
+Platform_Zhb::Platform_Zhb() : m_currentUserId(-1) {}
 
 Platform_Zhb::~Platform_Zhb()
 {
-    saveData();   // 析构时自动写回，实现断电保存
+    for (std::size_t i = 0; i < m_groupList.size(); ++i)
+        delete m_groupList[i];   // 释放群对象
+    saveData();                  // 析构时写回,实现断电保存
 }
 
 // ---------------- 数据加载 ----------------
 void Platform_Zhb::loadData(const std::string& userFile, const std::string& groupFile)
 {
-    m_userFile  = userFile;    // 记住路径，供 saveData 写回
+    m_userFile  = userFile;
     m_groupFile = groupFile;
 
-    // 清空旧数据
-    m_userList.clear();
+    // 清空旧数据(含释放已存在的群对象)
+    for (std::size_t i = 0; i < m_groupList.size(); ++i) delete m_groupList[i];
     m_groupList.clear();
+    m_userList.clear();
 
-    // ---- 读 users.txt：ID 昵称 出生时间 T龄 所在地 ----
+    // ---- 读 users.txt:ID 昵称 出生时间 T龄 所在地 ----
     std::ifstream uin(userFile.c_str());
     std::string line;
     while (std::getline(uin, line))
     {
-        if (trim(line).empty()) continue;              // 跳过空行
+        if (trim(line).empty()) continue;
         std::istringstream iss(line);
-        int  id = 0, tAge = 0;
-        std::string nick, birth, location;
-        iss >> id >> nick >> birth >> tAge;            // 取前 4 个字段
-        std::string rest;
-        std::getline(iss, rest);                       // 剩余作为所在地（可含空格）
-        location = trim(rest);
+        int id = 0, tAge = 0;
+        std::string nick, birth;
+        iss >> id >> nick >> birth >> tAge;
+        std::string rest; std::getline(iss, rest);
 
         User_Zhb u;
-        u.setId(id);
-        u.setNickname(nick);
-        u.setBirth(birth);
-        u.setTAge(tAge);
-        u.setLocation(location);
+        u.setId(id); u.setNickname(nick); u.setBirth(birth);
+        u.setTAge(tAge); u.setLocation(trim(rest));
         m_userList.push_back(u);
     }
     uin.close();
 
-    // ---- 读 groups.txt：群号 群名 群主ID 模式(0/1) 成员ID1,ID2,... ----
+    // ---- 读 groups.txt:群号 群名 群主ID 模式(0=QQ/1=微信) 成员ID1,... ----
     std::ifstream gin(groupFile.c_str());
     while (std::getline(gin, line))
     {
@@ -84,58 +78,47 @@ void Platform_Zhb::loadData(const std::string& userFile, const std::string& grou
         std::string gname;
         iss >> gid >> gname >> owner >> modeInt;
 
-        Group_Zhb g;
-        g.setGroupId(gid);
-        g.setGroupName(gname);
-        g.setOwnerId(owner);
-        g.setMode(modeInt == 0 ? QQ_MODE : WECHAT_MODE);
+        // 按模式 new 出具体子类(多态)
+        Group_Zhb* g = nullptr;
+        if (modeInt == 0) g = new QQGroup_Zhb(gid, gname, owner);
+        else              g = new WeChatGroup_Zhb(gid, gname, owner);
 
-        // 读取成员ID串（逗号分隔，可能为空）
         std::string csv;
         if (iss >> csv)
         {
             std::stringstream ss(csv);
             std::string token;
             while (std::getline(ss, token, ','))
-            {
-                if (!token.empty())
-                    g.addMember(std::stoi(token));
-            }
+                if (!token.empty()) g->addMember(std::stoi(token));
         }
         m_groupList.push_back(g);
     }
     gin.close();
 }
 
-// ---------------- 数据保存（覆盖写回原文件） ----------------
+// ---------------- 数据保存(覆盖写回原文件) ----------------
 void Platform_Zhb::saveData()
 {
-    if (m_userFile.empty() || m_groupFile.empty())
-        return;   // 从未 loadData 过，无目标文件可写
+    if (m_userFile.empty() || m_groupFile.empty()) return;
 
-    // 写回 users.txt
     std::ofstream uout(m_userFile.c_str());
     for (std::size_t i = 0; i < m_userList.size(); ++i)
     {
         const User_Zhb& u = m_userList[i];
-        uout << u.getId() << ' '
-             << u.getNickname() << ' '
-             << u.getBirth() << ' '
-             << u.getTAge() << ' '
+        uout << u.getId() << ' ' << u.getNickname() << ' '
+             << u.getBirth() << ' ' << u.getTAge() << ' '
              << u.getLocation() << '\n';
     }
     uout.close();
 
-    // 写回 groups.txt
     std::ofstream gout(m_groupFile.c_str());
     for (std::size_t i = 0; i < m_groupList.size(); ++i)
     {
-        const Group_Zhb& g = m_groupList[i];
-        gout << g.getGroupId() << ' '
-             << g.getGroupName() << ' '
-             << g.getOwnerId() << ' '
-             << (g.getMode() == QQ_MODE ? 0 : 1) << ' '
-             << joinInts(g.getMemberIds()) << '\n';
+        Group_Zhb* g = m_groupList[i];
+        gout << g->getGroupId() << ' ' << g->getGroupName() << ' '
+             << g->getOwnerId() << ' '
+             << (g->getMode() == QQ_MODE ? 0 : 1) << ' '   // 虚函数取模式
+             << joinInts(g->getMemberIds()) << '\n';
     }
     gout.close();
 }
@@ -143,8 +126,7 @@ void Platform_Zhb::saveData()
 // ---------------- 用户管理 ----------------
 bool Platform_Zhb::registerUser(const User_Zhb& user)
 {
-    if (findUser(user.getId()) != nullptr)   // ID 不能重复
-        return false;
+    if (findUser(user.getId()) != nullptr) return false;
     m_userList.push_back(user);
     return true;
 }
@@ -163,11 +145,17 @@ bool Platform_Zhb::removeUser(int userId)
     return false;
 }
 
+User_Zhb* Platform_Zhb::findUser(int userId)
+{
+    for (std::size_t i = 0; i < m_userList.size(); ++i)
+        if (m_userList[i].getId() == userId) return &m_userList[i];
+    return nullptr;
+}
+
 const User_Zhb* Platform_Zhb::findUser(int userId) const
 {
     for (std::size_t i = 0; i < m_userList.size(); ++i)
-        if (m_userList[i].getId() == userId)
-            return &m_userList[i];
+        if (m_userList[i].getId() == userId) return &m_userList[i];
     return nullptr;
 }
 
@@ -176,24 +164,19 @@ std::vector<User_Zhb>& Platform_Zhb::getAllUsers() { return m_userList; }
 // ---------------- 登录管理 ----------------
 bool Platform_Zhb::login(int userId)
 {
-    if (findUser(userId) == nullptr)
-        return false;                 // 用户不存在
-    m_currentUserId = userId;         // 同一平台其它服务视为自动登录
+    if (findUser(userId) == nullptr) return false;
+    m_currentUserId = userId;
     return true;
 }
 
-void Platform_Zhb::logout()
-{
-    m_currentUserId = -1;
-}
-
-int Platform_Zhb::getCurrentUserId() const { return m_currentUserId; }
+void Platform_Zhb::logout() { m_currentUserId = -1; }
+int  Platform_Zhb::getCurrentUserId() const { return m_currentUserId; }
 
 // ---------------- 群管理 ----------------
-bool Platform_Zhb::addGroup(const Group_Zhb& group)
+bool Platform_Zhb::addGroup(Group_Zhb* group)
 {
-    if (findGroup(group.getGroupId()) != nullptr)   // 群号不能重复
-        return false;
+    if (!group) return false;
+    if (findGroup(group->getGroupId()) != nullptr) { delete group; return false; } // 群号重复
     m_groupList.push_back(group);
     return true;
 }
@@ -202,8 +185,9 @@ bool Platform_Zhb::removeGroup(int groupId)
 {
     for (auto it = m_groupList.begin(); it != m_groupList.end(); ++it)
     {
-        if (it->getGroupId() == groupId)
+        if ((*it)->getGroupId() == groupId)
         {
+            delete *it;
             m_groupList.erase(it);
             return true;
         }
@@ -211,12 +195,81 @@ bool Platform_Zhb::removeGroup(int groupId)
     return false;
 }
 
-const Group_Zhb* Platform_Zhb::findGroup(int groupId) const
+Group_Zhb* Platform_Zhb::findGroup(int groupId)
 {
     for (std::size_t i = 0; i < m_groupList.size(); ++i)
-        if (m_groupList[i].getGroupId() == groupId)
-            return &m_groupList[i];
+        if (m_groupList[i]->getGroupId() == groupId) return m_groupList[i];
     return nullptr;
 }
 
-std::vector<Group_Zhb>& Platform_Zhb::getAllGroups() { return m_groupList; }
+const Group_Zhb* Platform_Zhb::findGroup(int groupId) const
+{
+    for (std::size_t i = 0; i < m_groupList.size(); ++i)
+        if (m_groupList[i]->getGroupId() == groupId) return m_groupList[i];
+    return nullptr;
+}
+
+std::vector<Group_Zhb*>& Platform_Zhb::getAllGroups() { return m_groupList; }
+
+// ---------------- 常用群操作(内部转调多态方法) ----------------
+bool Platform_Zhb::joinGroup(int groupId, int userId, bool isRecommended)
+{
+    Group_Zhb* g = findGroup(groupId);
+    return g ? g->joinGroup(userId, groupId, isRecommended) : false;
+}
+
+bool Platform_Zhb::setAdmin(int groupId, int adminId)
+{
+    Group_Zhb* g = findGroup(groupId);
+    return g ? g->setAdmin(groupId, adminId) : false;
+}
+
+bool Platform_Zhb::kickMember(int groupId, int operatorId, int targetId)
+{
+    Group_Zhb* g = findGroup(groupId);
+    return g ? g->kickMember(operatorId, targetId) : false;
+}
+
+// ---------------- 建子群 ----------------
+Group_Zhb* Platform_Zhb::createSubGroup(int groupId, const std::string& subName)
+{
+    Group_Zhb* g = findGroup(groupId);
+    if (!g) return nullptr;
+    Group_Zhb* sub = g->createSubGroup(groupId, subName);  // 微信返回 nullptr
+    if (!sub) return nullptr;
+    sub->setGroupId(allocGroupId());          // 分配唯一群号
+    m_groupList.push_back(sub);               // 登记进列表,由 Platform 拥有
+    return sub;
+}
+
+// ---------------- 模式切换 ----------------
+Group_Zhb* Platform_Zhb::switchMode(int groupId, GroupMode newMode)
+{
+    for (std::size_t i = 0; i < m_groupList.size(); ++i)
+    {
+        Group_Zhb* g = m_groupList[i];
+        if (g->getGroupId() == groupId)
+        {
+            Group_Zhb* ng = g->switchMode(newMode);   // 同模式→nullptr
+            if (!ng) return nullptr;
+            delete g;                 // 释放旧对象
+            m_groupList[i] = ng;      // 列表指向新对象(成员数据已保留)
+            return ng;
+        }
+    }
+    return nullptr;
+}
+
+// ---------------- 私有:生成未占用的群号 ----------------
+int Platform_Zhb::allocGroupId() const
+{
+    int candidate = 1;
+    bool taken = true;
+    while (taken)
+    {
+        taken = false;
+        for (std::size_t i = 0; i < m_groupList.size(); ++i)
+            if (m_groupList[i]->getGroupId() == candidate) { taken = true; ++candidate; break; }
+    }
+    return candidate;
+}
