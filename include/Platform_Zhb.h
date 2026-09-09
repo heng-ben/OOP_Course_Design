@@ -48,6 +48,10 @@ public:
 
     // 模式切换:返回“已登记替换后的新对象”;同模式/找不到→nullptr(内部已 delete 旧对象)
     Group_Zhb* switchMode(int groupId, GroupMode newMode);
+        // ---- 服务开通管理(登录/开通/查看状态用) ----
+    bool openService(int userId, int serviceId);          // 开通某个微X服务
+    bool isServiceOpened(int userId, int serviceId) const;
+    std::vector<int> getOpenedServices(int userId) const; // 返回已开通服务ID列表
 
 private:
     int allocGroupId() const;               // 生成一个未占用的群号
