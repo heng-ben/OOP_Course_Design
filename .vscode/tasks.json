@@ -11,7 +11,9 @@
                 "-fexec-charset=GBK",
                 "-I", "${workspaceFolder}/include",
                 "${workspaceFolder}/src/*.cpp",
-                "-o", "${workspaceFolder}/build/main.exe"
+                "-o", "${workspaceFolder}/build/main.exe",
+                "-lws2_32",
+                "-pthread"
             ],
             "group": {
                 "kind": "build",
