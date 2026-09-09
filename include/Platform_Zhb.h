@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <map>
 
 #include "User_Zhb.h"
 #include "Group_Zhb.h"      // 提供 GroupMode + 多态基类
