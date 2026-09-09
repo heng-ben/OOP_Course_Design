@@ -62,4 +62,5 @@ private:
 
     std::string m_userFile;   // users.txt 原路径
     std::string m_groupFile;  // groups.txt 原路径
+    std::map<int, std::vector<int>> m_userOpened;   // userId -> 已开通服务ID列表
 };
