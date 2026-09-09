@@ -7,6 +7,7 @@ class User_Zhb
 {
 public:
     User_Zhb();
+    ~User_Zhb();
 
     // ---- ID ----
     void setId(int id);
