@@ -8,6 +8,9 @@
 
 using namespace std;
 
+// 输入 -1 表示取消本次操作并返回上一级(通用约定)
+const int GO_BACK = -1;
+
 // ---------- 可开通的服务(用枚举) ----------
 enum AccountService
 {
@@ -27,7 +30,7 @@ const char* serviceName(int s)
     }
 }
 
-// ---------- 健壮输入 ----------
+// ---------- 健壮整数输入 ----------
 int readInt()
 {
     string line;
@@ -37,9 +40,9 @@ int readInt()
         int v;
         char rest;
         if (iss >> v && !(iss >> rest)) return v;
-        cout << "输入无效,请输入一个数字: ";
+        cout << "输入无效,请输入一个数字(或 -1 返回): ";
     }
-    return -1;   // EOF
+    return GO_BACK;   // EOF 当作返回
 }
 
 bool askYesNo(const string& prompt)
@@ -47,13 +50,17 @@ bool askYesNo(const string& prompt)
     string line;
     while (true)
     {
-        cout << prompt << " (y/n): ";
+        cout << prompt << " (y/n, 输入其它返回): ";
         getline(cin, line);
         if (line == "y" || line == "Y") return true;
         if (line == "n" || line == "N") return false;
-        cout << "请回答 y 或 n。\n";
+        cout << "已返回。\n";
+        return false;   // 其它输入视为取消(yes-no 选择返回false但由调用方处理)
     }
 }
+
+// 提示当前输入支持返回
+void hint(const string& what) { cout << "(输入 -1 返回上级)\n请输入" << what << ": "; }
 
 // ==================== 注册新用户 ====================
 int registerFlow(Platform_Zhb& p)
@@ -62,45 +69,43 @@ int registerFlow(Platform_Zhb& p)
     int id;
     while (true)
     {
-        cout << "请输入号码ID: ";
+        hint("号码ID"); 
         id = readInt();
+        if (id == GO_BACK) { cout << "已取消注册。\n"; return GO_BACK; }
         if (p.findUser(id) != nullptr) { cout << "该ID已被占用,请换一个。\n"; continue; }
         break;
     }
     string nick, birth, loc;
-    int tAge;
-    cout << "昵称: ";            getline(cin, nick);
-    cout << "出生时间(如 20050101): "; getline(cin, birth);
-    cout << "所在地(不含空格): ";     getline(cin, loc);
-    cout << "T龄(号码申请年限,整数): "; tAge = readInt();
+    cout << "(直接回车可取消)\n";
+    cout << "昵称: ";          getline(cin, nick); if (nick.empty()) { cout << "已取消注册。\n"; return GO_BACK; }
+    cout << "出生时间(如20050101): "; getline(cin, birth); if (birth.empty()) { cout << "已取消注册。\n"; return GO_BACK; }
+    cout << "所在地(不含空格): ";     getline(cin, loc);  if (loc.empty())  { cout << "已取消注册。\n"; return GO_BACK; }
+    cout << "T龄(号码申请年限): ";  int tAge = readInt(); if (tAge == GO_BACK) { cout << "已取消注册。\n"; return GO_BACK; }
 
     User_Zhb u;
-    u.setId(id);
-    u.setNickname(nick);
-    u.setBirth(birth);
-    u.setLocation(loc);
-    u.setTAge(tAge);
-
+    u.setId(id); u.setNickname(nick); u.setBirth(birth);
+    u.setLocation(loc); u.setTAge(tAge);
     if (p.registerUser(u))
     {
         cout << "注册成功!ID: " << id << " 昵称: " << nick << "\n";
         return id;
     }
     cout << "注册失败。\n";
-    return -1;
+    return GO_BACK;
 }
 
 // ==================== 开通服务流程 ====================
 void openServiceFlow(Platform_Zhb& p, int uid)
 {
-    cout << "\n可选服务: 0=QQ  1=微信  2=微博\n请输入要开通的服务: ";
+    cout << "\n可选服务: 0=QQ  1=微信  2=微博  (-1 返回)\n请输入要开通的服务: ";
     int s = readInt();
-    if (s < 0 || s > 2) { cout << "无效的服务编号。\n"; return; }
+    if (s == GO_BACK) return;                       // 返回上级
+    if (s < 0 || s > 2) { cout << "无效服务编号,请重新选择或输入 -1 返回。\n"; return; }
     cout << (p.openService(uid, s) ? "开通成功! " : "你已开通过该服务。 ")
          << serviceName(s) << " 现为在线状态。\n";
 }
 
-// ==================== 查看服务状态 ====================
+// ==================== 查看服务状态(纯展示,结束后自然返回) ====================
 void showServices(Platform_Zhb& p, int uid)
 {
     vector<int> opened = p.getOpenedServices(uid);
@@ -126,10 +131,17 @@ void friendMenu(Platform_Zhb& p, int uid, int svc)   // svc: QQ 或 微信
 
         if (c == 1 || c == 2 || c == 4)
         {
-            cout << "请输入对方用户ID: ";
-            int other = readInt();
-            if (p.findUser(other) == nullptr) { cout << "该用户不存在。\n"; continue; }
-            if (other == uid) { cout << "不能对自己操作。\n"; continue; }
+            int other;
+            while (true)
+            {
+                hint("对方用户ID");
+                other = readInt();
+                if (other == GO_BACK) break;              // 返回上级
+                if (p.findUser(other) == nullptr) { cout << "该用户不存在,请重输或 -1 返回。\n"; continue; }
+                if (other == uid) { cout << "不能对自己操作,请重输或 -1 返回。\n"; continue; }
+                break;
+            }
+            if (other == GO_BACK) continue;               // 回到好友菜单
 
             if (c == 1) { mgr.addFriend(uid, other); cout << "已添加好友 " << other << "\n"; }
             else if (c == 2)
@@ -162,7 +174,7 @@ void friendMenu(Platform_Zhb& p, int uid, int svc)   // svc: QQ 或 微信
             else for (size_t i = 0; i < rec.size(); ++i) cout << rec[i] << ' ';
             cout << '\n';
         }
-        else cout << "无效选项,请重新输入。\n";
+        else cout << "无效选项,请重新输入(或选 6 返回)。\n";
     }
 }
 
@@ -180,30 +192,74 @@ void groupMenu(Platform_Zhb& p, int uid)
 
         if (c == 1)
         {
-            cout << "请输入群号: ";  int gid = readInt();
-            if (p.findGroup(gid) == nullptr) { cout << "群不存在。\n"; continue; }
+            int gid;
+            while (true)
+            {
+                hint("群号");
+                gid = readInt();
+                if (gid == GO_BACK) break;
+                if (p.findGroup(gid) == nullptr) { cout << "群不存在,请重输或 -1 返回。\n"; continue; }
+                break;
+            }
+            if (gid == GO_BACK) continue;
             bool rec = askYesNo("是否由群主/好友推荐加入?");
+            if (!rec && false) {}   // 占位:y/n 已有语义
             cout << (p.joinGroup(gid, uid, rec) ? "加入成功。\n"
                                                 : "加入失败(可能已在群内或未获推荐)。\n");
         }
         else if (c == 2)
         {
-            cout << "请输入要退出的群号: "; int gid = readInt();
+            int gid;
+            while (true)
+            {
+                hint("要退出的群号");
+                gid = readInt();
+                if (gid == GO_BACK) break;
+                Group_Zhb* g = p.findGroup(gid);
+                if (!g) { cout << "群不存在,请重输或 -1 返回。\n"; continue; }
+                break;
+            }
+            if (gid == GO_BACK) continue;
             Group_Zhb* g = p.findGroup(gid);
-            cout << (g && g->removeMember(uid) ? "已退出该群。\n" : "你不是该群成员或群不存在。\n");
+            cout << (g->removeMember(uid) ? "已退出该群。\n" : "你不是该群成员。\n");
         }
         else if (c == 3)
         {
-            cout << "群号: ";  int gid = readInt();
-            cout << "被踢用户ID: "; int target = readInt();
+            int gid, target;
+            while (true)
+            {
+                hint("群号");
+                gid = readInt();
+                if (gid == GO_BACK) break;
+                if (!p.findGroup(gid)) { cout << "群不存在,请重输或 -1 返回。\n"; continue; }
+                break;
+            }
+            if (gid == GO_BACK) continue;
+            while (true)
+            {
+                hint("被踢用户ID");
+                target = readInt();
+                if (target == GO_BACK) break;
+                if (target == uid) { cout << "不能踢自己,请重输或 -1 返回。\n"; continue; }
+                break;
+            }
+            if (target == GO_BACK) continue;
             cout << (p.kickMember(gid, uid, target) ? "已踢出。\n"
                       : "无权踢人或目标不在群(群主不可踢,微信群仅群主可踢)。\n");
         }
         else if (c == 4)
         {
-            cout << "群号: "; int gid = readInt();
+            int gid;
+            while (true)
+            {
+                hint("群号");
+                gid = readInt();
+                if (gid == GO_BACK) break;
+                if (!p.findGroup(gid)) { cout << "群不存在,请重输或 -1 返回。\n"; continue; }
+                break;
+            }
+            if (gid == GO_BACK) continue;
             Group_Zhb* g = p.findGroup(gid);
-            if (!g) { cout << "群不存在。\n"; continue; }
             cout << "群名: " << g->getGroupName()
                  << "  模式: " << (g->getMode() == QQ_MODE ? "QQ" : "微信")
                  << "  群主: " << g->getOwnerId() << "\n成员: ";
@@ -214,24 +270,45 @@ void groupMenu(Platform_Zhb& p, int uid)
         }
         else if (c == 5)
         {
-            cout << "群号: "; int gid = readInt();
-            if (!p.findGroup(gid)) { cout << "群不存在。\n"; continue; }
-            cout << "切换为 0=QQ群 / 1=微信群: "; int m = readInt();
+            int gid;
+            while (true)
+            {
+                hint("群号");
+                gid = readInt();
+                if (gid == GO_BACK) break;
+                if (!p.findGroup(gid)) { cout << "群不存在,请重输或 -1 返回。\n"; continue; }
+                break;
+            }
+            if (gid == GO_BACK) continue;
+            cout << "切换为 0=QQ群 / 1=微信群 (-1 返回): ";
+            int m = readInt();
+            if (m == GO_BACK) continue;
             GroupMode nm = (m == 0) ? QQ_MODE : WECHAT_MODE;
             Group_Zhb* ng = p.switchMode(gid, nm);
-            if (!ng) cout << "无需切换(已是该模式)或群不存在。\n";
+            if (!ng) cout << "无需切换(已是该模式)。\n";
             else      cout << "已切换为 " << (ng->getMode() == QQ_MODE ? "QQ" : "微信")
                            << " 模式(成员数据保留)。\n";
         }
         else if (c == 6)
         {
-            cout << "父群号: "; int gid = readInt();
-            cout << "子群名称: "; string sub; getline(cin, sub);
+            int gid;
+            while (true)
+            {
+                hint("父群号");
+                gid = readInt();
+                if (gid == GO_BACK) break;
+                if (!p.findGroup(gid)) { cout << "群不存在,请重输或 -1 返回。\n"; continue; }
+                break;
+            }
+            if (gid == GO_BACK) continue;
+            cout << "子群名称(直接回车返回上级): ";
+            string sub; getline(cin, sub);
+            if (sub.empty()) continue;
             Group_Zhb* subg = p.createSubGroup(gid, sub);
-            if (!subg) cout << "创建失败:该群不存在或为微信群(仅QQ群可建临时讨论组)。\n";
+            if (!subg) cout << "创建失败:该群为微信群(仅QQ群可建临时讨论组)。\n";
             else       cout << "已创建临时讨论组,新群号: " << subg->getGroupId() << "\n";
         }
-        else cout << "无效选项,请重新输入。\n";
+        else cout << "无效选项,请重新输入(或选 7 返回)。\n";
     }
 }
 
@@ -242,7 +319,8 @@ void userMenu(Platform_Zhb& p, int uid)
     while (true)
     {
         cout << "\n======== 用户 [ " << (me ? me->getNickname() : "?") << " ] ========\n"
-             << "1. 好友管理\n2. 群管理\n3. 查看已开通服务\n4. 注销(返回登录界面)\n请选择: ";
+             << "1. 好友管理\n2. 群管理\n3. 查看已开通服务\n4. 注销(返回登录界面)\n"
+             << "(在任意输入处输 -1 可返回上一级)\n请选择: ";
         int c = readInt();
         if (c == 4) break;
 
@@ -283,17 +361,25 @@ int main()
         if (c == 1)   // ---------- 注册 ----------
         {
             int id = registerFlow(platform);
-            if (id != -1) { platform.login(id); current = id; }   // 注册后直接进入
-            else continue;
-            userMenu(platform, current);   // 进入子菜单
+            if (id == GO_BACK) continue;                 // 注册被取消,返回主菜单
+            platform.login(id);
+            current = id;
+            userMenu(platform, current);                 // 注册后直接进入子菜单
             platform.logout();
             current = -1;
         }
         else if (c == 2)   // ---------- 登录 ----------
         {
-            cout << "请输入用户ID: ";
-            int id = readInt();
-            if (platform.findUser(id) == nullptr) { cout << "该用户不存在,请先注册。\n"; continue; }
+            int id;
+            while (true)
+            {
+                hint("用户ID");
+                id = readInt();
+                if (id == GO_BACK) break;                // 返回上级(主菜单)
+                if (platform.findUser(id) == nullptr) { cout << "该用户不存在,请先注册或 -1 返回。\n"; continue; }
+                break;
+            }
+            if (id == GO_BACK) continue;
 
             platform.login(id);
             current = id;
@@ -303,7 +389,11 @@ int main()
             if (opened.empty())
             {
                 cout << "\n你尚未开通任何微X服务。";
-                if (askYesNo("\n是否立即开通?")) openServiceFlow(platform, current);
+                if (askYesNo("\n是否立即开通?"))
+                {
+                    openServiceFlow(platform, current);
+                    // openServiceFlow 内 -1 会直接返回
+                }
                 cout << "\n进入主功能…\n";
             }
             else
@@ -322,21 +412,23 @@ int main()
         {
             if (current == -1)
             {
-                cout << "请先登录(输入账号ID): ";
+                cout << "尚未登录,请先输入账号ID(-1 返回): ";
                 int id = readInt();
-                if (platform.findUser(id) == nullptr) { cout << "该用户不存在,请先注册。\n"; continue; }
+                if (id == GO_BACK) continue;
+                if (platform.findUser(id) == nullptr) { cout << "该用户不存在。\n"; continue; }
                 platform.login(id);
                 current = id;
             }
-            openServiceFlow(platform, current);
+            openServiceFlow(platform, current);   // 内可 -1 返回
         }
         else if (c == 4)   // ---------- 查看状态 ----------
         {
             if (current == -1)
             {
-                cout << "请先登录(输入账号ID): ";
+                cout << "尚未登录,请先输入账号ID(-1 返回): ";
                 int id = readInt();
-                if (platform.findUser(id) == nullptr) { cout << "该用户不存在,请先注册。\n"; continue; }
+                if (id == GO_BACK) continue;
+                if (platform.findUser(id) == nullptr) { cout << "该用户不存在。\n"; continue; }
                 current = id;
             }
             showServices(platform, current);
