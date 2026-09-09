@@ -160,6 +160,32 @@ const User_Zhb* Platform_Zhb::findUser(int userId) const
 }
 
 std::vector<User_Zhb>& Platform_Zhb::getAllUsers() { return m_userList; }
+// ================= 服务开通管理 =================
+bool Platform_Zhb::openService(int userId, int serviceId)
+{
+    // 已开通则不再重复添加
+    std::vector<int>& opened = m_userOpened[userId];
+    for (std::size_t i = 0; i < opened.size(); ++i)
+        if (opened[i] == serviceId) return false;
+    opened.push_back(serviceId);
+    return true;
+}
+
+bool Platform_Zhb::isServiceOpened(int userId, int serviceId) const
+{
+    auto it = m_userOpened.find(userId);
+    if (it == m_userOpened.end()) return false;
+    for (std::size_t i = 0; i < it->second.size(); ++i)
+        if (it->second[i] == serviceId) return true;
+    return false;
+}
+
+std::vector<int> Platform_Zhb::getOpenedServices(int userId) const
+{
+    auto it = m_userOpened.find(userId);
+    if (it == m_userOpened.end()) return std::vector<int>();
+    return it->second;
+}
 
 // ---------------- 登录管理 ----------------
 bool Platform_Zhb::login(int userId)
